@@ -1,6 +1,5 @@
 package dataunity.datastructdef;
 
-import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -27,8 +26,8 @@ import au.com.bytecode.opencsv.CSVReader;
 import com.hp.hpl.jena.rdf.model.Model;
 
 public class MetadataInfo {
-	private static Pattern decimalPattern = Pattern.compile("^(\\d)+\\.(\\d)+$");
-	private static Pattern integerPattern = Pattern.compile("^(\\d)+$");
+	private static Pattern decimalPattern = Pattern.compile("^\\s*-?(\\d)+\\.(\\d)+\\s*$");
+	private static Pattern integerPattern = Pattern.compile("^\\s*-?(\\d)+\\s*$");
 	
 	public static boolean isDecimal(String str) {
 		if (str == null) {
@@ -46,7 +45,7 @@ public class MetadataInfo {
 		return m.matches();
 	}
 	
-	private static String guessXSDType(Collection<String> vals) {
+	public static String guessXSDType(Collection<String> vals) {
 		Set<String> types = new HashSet<String>();
 		String xsdPrefix = "http://www.w3.org/2001/XMLSchema#";
 		String xsdString = xsdPrefix + "string";
@@ -57,6 +56,11 @@ public class MetadataInfo {
 		Iterator<String> iter = vals.iterator();
 		while (iter.hasNext()) {
 			item = iter.next();
+			if (item == null || item.isEmpty()) {
+				// Bypass blanks
+				continue;
+			}
+			
 			if (isDecimal(item)){
 				types.add("decimal");
 			}
@@ -77,6 +81,9 @@ public class MetadataInfo {
 			}
 			else if (types.size() == 1 && types.contains("integer")) {
 				return xsdInteger;
+			}
+			else if (types.size() == 1 && types.contains("decimal")) {
+				return xsdDecimal;
 			}
 			else if (types.size() == 2 && types.containsAll(decimalTypes)) {
 				return xsdDecimal;
