@@ -94,7 +94,7 @@ public class Worker {
 	}
 	
 	public void start(String endPoint) {
-		logger.info("Starting file metadata service.");
+		logger.info(String.format("Starting file metadata service on endpoint %s", endPoint));
 		if (!isStopped) {
 			// Error if already running
 			throw new RuntimeException("File metadata service already started.");
@@ -110,6 +110,7 @@ public class Worker {
 			String taskData;
 			try {
 				taskData = socket.recvStr();
+				logger.info("Received job data");
 			}
 			catch (Exception e) {
 				String basicMsg = "Problem running file metadata job.";
