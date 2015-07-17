@@ -101,6 +101,11 @@
 		<version>4.8.1</version>
 		<scope>test</scope>
     </dependency>
+    <dependency>
+		<groupId>asia.stampy</groupId>
+		<artifactId>stampy-core</artifactId>
+		<version>1.0-RELEASE</version>
+	</dependency>
     <!-- Kafka dependency -->
     <dependency>
         <groupId>org.scala-lang</groupId>

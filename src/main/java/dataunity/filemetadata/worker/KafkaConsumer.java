@@ -8,10 +8,14 @@ import java.util.Properties;
 
 import org.apache.log4j.Logger;
 
+import asia.stampy.common.message.AbstractBodyMessage;
+import asia.stampy.server.message.message.MessageMessage;
+
 import com.google.gson.Gson;
 import com.hp.hpl.jena.rdf.model.Model;
 
 import dataunity.datastructdef.MetadataInfo;
+import dataunity.stomp.JSONStompMessageParser;
 import kafka.consumer.ConsumerConfig;
 import kafka.consumer.ConsumerIterator;
 import kafka.consumer.KafkaStream;
@@ -20,6 +24,8 @@ public class KafkaConsumer {
 	private static final Logger logger = Logger.getLogger(KafkaConsumer.class);
 	private final ConsumerConnector consumer;
 	private final String topic;
+	// ToDo: read reply topic from request message?
+	private String replyTopic = "test1reply";
 	public KafkaConsumer(String zookeeper, String groupId, String topic) {
 		consumer = kafka.consumer.Consumer.createJavaConsumerConnector(createConsumerConfig(zookeeper, groupId));
 		this.topic = topic;
@@ -29,7 +35,7 @@ public class KafkaConsumer {
 		private String path = null;
 		private String encoding = null;
 		private String dataUnity_base_url = null;
-		private String correlation_id = null;
+//		private String correlation_id = null;
 
 		public String getPath() {
 			return path;
@@ -52,12 +58,12 @@ public class KafkaConsumer {
 			this.dataUnity_base_url = dataUnityBaseURL;
 		}
 		
-		public String getCorrelationId() {
-			return correlation_id;
-		}
-		public void setCorrelationId(String correlationId) {
-			this.correlation_id = correlationId;
-		}
+//		public String getCorrelationId() {
+//			return correlation_id;
+//		}
+//		public void setCorrelationId(String correlationId) {
+//			this.correlation_id = correlationId;
+//		}
 	}
 	
 	public static class ResponseMessage {
@@ -101,11 +107,28 @@ public class KafkaConsumer {
 		return requestMsg;
 	}
 	
-	private static String createResponseMessage(ResponseMessage msg) {
-		Gson gson = new Gson();
-		String strMsg = gson.toJson(msg, ResponseMessage.class);
-		return strMsg;
+	private static String createResponseMessage(String replyTopic, String correlationId, String rdfData) {
+		String messageId = java.util.UUID.randomUUID().toString();
+		
+		// ToDo: Need to figure out how subscription will work with Kafka
+		String subscription = "0";
+		
+		MessageMessage stompMsg = new MessageMessage();
+		stompMsg.getHeader().setContentType("text/turtle");
+		stompMsg.getHeader().setDestination(replyTopic);
+		stompMsg.getHeader().setMessageId(messageId);
+		stompMsg.getHeader().setSubscription(subscription);
+		stompMsg.getHeader().addHeader("correlation-id", correlationId);
+		stompMsg.setBody(rdfData);
+		String stompMsgStr = stompMsg.toStompMessage(true);
+		return stompMsgStr;
 	}
+	
+//	private static String createResponseMessage(ResponseMessage msg) {
+//		Gson gson = new Gson();
+//		String strMsg = gson.toJson(msg, ResponseMessage.class);
+//		return strMsg;
+//	}
 	
 	private static String createErrorResponseMessage(String correlationId, String errorMsg, Exception ex) {
 		ResponseMessage msg = new ResponseMessage(correlationId, errorMsg + ex.getMessage());
@@ -128,6 +151,7 @@ public class KafkaConsumer {
 	}
 	public void runConsumer() {
 		SimpleProducer simpleProducer = new SimpleProducer();
+		JSONStompMessageParser stompMsgParser = new JSONStompMessageParser();
 		Map<String, Integer> topicMap = new HashMap<String, Integer>();
 		// Define single thread for topic
 		topicMap.put(topic, new Integer(1));
@@ -139,8 +163,6 @@ public class KafkaConsumer {
 				String taskData;
 				try {
 					taskData = new String(consumerIte.next().message());
-					System.out.println("Got message");
-					System.out.flush();
 					logger.info("Got message");
 					logger.info(taskData);
 				}
@@ -158,19 +180,37 @@ public class KafkaConsumer {
 					continue;
 				}
 				
-				// Run job
-				String correlationId = "";
+				AbstractBodyMessage stompMsg;
+				RequestMessage jobData;
+				String correlationId;
 				try {
-					RequestMessage jobData = parseRequestMessage(taskData);
-					correlationId = jobData.getCorrelationId();
+					// Parse data
+					stompMsg = stompMsgParser.parseMessage(taskData);
+					correlationId = stompMsg.getHeader().getHeaderValue("correlation-id");
+					jobData = parseRequestMessage(stompMsg.getBody().toString());
+				}
+				catch (Exception e) {
+					// Badly formed message
+					// ToDo: replace below with message to error channel?
+					String basicMsg = "Problem parsing job data from message.";
+					logger.error(basicMsg, e);
+					String errorMsg = createErrorResponseMessage("", basicMsg, e);
+					// ToDo: send STOMP error message via reply channel 
+//					socket.send(errorMsg);
+					e.printStackTrace();
+					continue;
+				}
+				
+				// Run job
+				try {
 					String path = jobData.getPath();
 					if (path == null) {
-						throw new RuntimeException("Request message missing file path");
+						throw new NullPointerException("Request message missing file path");
 					}
 					String encoding = jobData.getEncoding();
 					String dataUnityBaseURL = jobData.getDataUnityBaseURL();
 					if (dataUnityBaseURL == null) {
-						throw new RuntimeException("Request message missing dataUnityBaseURL");
+						throw new NullPointerException("Request message missing dataUnityBaseURL");
 					}
 					
 					Model model = MetadataInfo.extractDataStructDef(dataUnityBaseURL, path, encoding);
@@ -178,13 +218,11 @@ public class KafkaConsumer {
 				    model.write(os, "TURTLE");
 				    String rdfStr = new String(os.toByteArray(), "UTF-8");
 				    ResponseMessage response = new ResponseMessage(correlationId, rdfStr);
-				    String responseMsg = createResponseMessage(response);
+				    String responseMsg = createResponseMessage(replyTopic, correlationId, rdfStr);
 				    
 				    // Send message to reply channel
 				    // ToDo: cache producers?
-					String reply_topic = "test1reply";
-					
-					simpleProducer.publishMessage(reply_topic, responseMsg);
+					simpleProducer.publishMessage(replyTopic, responseMsg);
 				}
 				catch (Exception e) {
 					String basicMsg = "Problem running DataStructDef metadata job.";
