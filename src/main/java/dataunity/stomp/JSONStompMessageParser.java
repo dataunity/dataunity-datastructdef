@@ -20,9 +20,6 @@ public class JSONStompMessageParser extends StompMessageParser {
 				}
 			}
 	    }
-//		System.out.println("isText:");
-//		System.out.println(isText || isJSON);
-//		System.out.flush();
 		return isText || isJSON;
 	}
 }

@@ -71,9 +71,6 @@ public class KafkaConsumer {
 		private boolean has_errors = false;
 		private String correlation_id = null;
 		
-//		public ResponseMessage() {
-//		}
-		
 		public ResponseMessage(String correlationId, String data) {
 			setCorrelationId(correlationId);
 			setData(data);
@@ -243,9 +240,6 @@ public class KafkaConsumer {
 		simpleProducer.close();
 	}
 	public static void main(String[] args) {
-//		String zooKeeper = args[0];
-//		String groupId = args[1];
-//		String topic = args[2];
 		String zookeeper = null;
 		String groupId = "filemetadatagroup";
 		String topic = "test1";
