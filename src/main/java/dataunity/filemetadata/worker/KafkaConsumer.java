@@ -1,6 +1,10 @@
 package dataunity.filemetadata.worker;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,10 +29,11 @@ public class KafkaConsumer {
 	private final ConsumerConnector consumer;
 	private final String topic;
 	// ToDo: read reply topic from request message?
-	private String replyTopic = "test1reply";
-	public KafkaConsumer(String zookeeper, String groupId, String topic) {
+	private final String replyTopic;
+	public KafkaConsumer(String zookeeper, String groupId, String topic, String replyTopic) {
 		consumer = kafka.consumer.Consumer.createJavaConsumerConnector(createConsumerConfig(zookeeper, groupId));
 		this.topic = topic;
+		this.replyTopic = replyTopic;
 	}
 	
 	private static class RequestMessage {
@@ -239,10 +244,18 @@ public class KafkaConsumer {
 			consumer.shutdown();
 		simpleProducer.close();
 	}
-	public static void main(String[] args) {
+	public static void main(String[] args) throws IOException {
+		// Get config settings
+		Properties configProps = new Properties();
+		InputStream in = KafkaConsumer.class.getResourceAsStream("/config.properties");
+		configProps.load(in);
+		in.close();
+		
 		String zookeeper = null;
-		String groupId = "filemetadatagroup";
-		String topic = "test1";
+		String groupId = configProps.getProperty("consumerGroup");
+		String topic = configProps.getProperty("topic");
+		String replyTopic = configProps.getProperty("replyTopic");
+		
 		// Read docker environment variables
 		Map<String, String> env = System.getenv();
 		String zookeeper_addr = env.get("ZOOKEEPER_PORT_2181_TCP_ADDR");
@@ -259,7 +272,7 @@ public class KafkaConsumer {
 			throw new NullPointerException("Zookeeper endpoint should be specified through environment.");
 		}
 		
-		KafkaConsumer simpleHLConsumer = new KafkaConsumer(zookeeper, groupId, topic);
+		KafkaConsumer simpleHLConsumer = new KafkaConsumer(zookeeper, groupId, topic, replyTopic);
 		simpleHLConsumer.runConsumer();
 	}
 }
