@@ -15,10 +15,4 @@ RUN ["mvn", "verify"]
 ADD src /code/src
 RUN ["mvn", "package"]
 
-CMD /usr/lib/jvm/java-8-openjdk-amd64/bin/java -cp target/dataunity-filemetadata-0.0.1-SNAPSHOT.jar dataunity.filemetadata.worker.KafkaConsumer
-
-# OLD VERSION, slow to build
-# FROM maven:3.2-jdk-7-onbuild
-# EXPOSE 5004
-# CMD java -cp target/dataunity-filemetadata-0.0.1-SNAPSHOT.jar dataunity.filemetadata.worker.KafkaConsumer
-## CMD java -cp target/dataunity-filemetadata-0.0.1-SNAPSHOT.jar dataunity.filemetadata.worker.Main
+CMD /usr/lib/jvm/java-8-openjdk-amd64/bin/java -cp target/dataunity-filemetadata-0.0.1-SNAPSHOT.jar dataunity.filemetadata.worker.Main

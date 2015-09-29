@@ -1,10 +1,6 @@
 package dataunity.filemetadata.worker;
 
 import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +9,7 @@ import java.util.Properties;
 import org.apache.log4j.Logger;
 
 import asia.stampy.common.message.AbstractBodyMessage;
+import asia.stampy.server.message.message.MessageHeader;
 import asia.stampy.server.message.message.MessageMessage;
 
 import com.google.gson.Gson;
@@ -24,6 +21,7 @@ import kafka.consumer.ConsumerConfig;
 import kafka.consumer.ConsumerIterator;
 import kafka.consumer.KafkaStream;
 import kafka.javaapi.consumer.ConsumerConnector;
+
 public class KafkaConsumer {
 	private static final Logger logger = Logger.getLogger(KafkaConsumer.class);
 	private final ConsumerConnector consumer;
@@ -37,10 +35,17 @@ public class KafkaConsumer {
 	}
 	
 	private static class RequestMessage {
+		private String datatable_iri = null;
 		private String path = null;
 		private String encoding = null;
 		private String dataUnity_base_url = null;
-//		private String correlation_id = null;
+		
+		public String getDatatableIRI() {
+			return datatable_iri;
+		}
+		public void setDatatableIRI(String datatableIRI) {
+			this.datatable_iri = datatableIRI;
+		}
 
 		public String getPath() {
 			return path;
@@ -62,23 +67,25 @@ public class KafkaConsumer {
 		public void setDataUnityBaseURL(String dataUnityBaseURL) {
 			this.dataUnity_base_url = dataUnityBaseURL;
 		}
-		
-//		public String getCorrelationId() {
-//			return correlation_id;
-//		}
-//		public void setCorrelationId(String correlationId) {
-//			this.correlation_id = correlationId;
-//		}
 	}
 	
 	public static class ResponseMessage {
+		private String datatable_iri = null;
 		private String data = null;
 		private boolean has_errors = false;
 		private String correlation_id = null;
 		
-		public ResponseMessage(String correlationId, String data) {
+		public ResponseMessage(String datatableIRI, String correlationId, String data) {
+			setDatatableIRI(datatableIRI);
 			setCorrelationId(correlationId);
 			setData(data);
+		}
+		
+		public String getDatatableIRI() {
+			return datatable_iri;
+		}
+		public void setDatatableIRI(String datatableIRI) {
+			this.datatable_iri = datatableIRI;
 		}
 
 		public String getData() {
@@ -109,34 +116,28 @@ public class KafkaConsumer {
 		return requestMsg;
 	}
 	
-	private static String createResponseMessage(String replyTopic, String correlationId, String rdfData) {
+	private static String createResponseMessage(String datatableIRI, String replyTopic, String correlationId, String rdfData) {
 		String messageId = java.util.UUID.randomUUID().toString();
 		
 		// ToDo: Need to figure out how subscription will work with Kafka
 		String subscription = "0";
 		
 		MessageMessage stompMsg = new MessageMessage();
-		stompMsg.getHeader().setContentType("text/turtle");
-		stompMsg.getHeader().setDestination(replyTopic);
-		stompMsg.getHeader().setMessageId(messageId);
-		stompMsg.getHeader().setSubscription(subscription);
-		stompMsg.getHeader().addHeader("correlation-id", correlationId);
+		MessageHeader header = stompMsg.getHeader();
+		header.setContentType("text/turtle");
+		header.setDestination(replyTopic);
+		header.setMessageId(messageId);
+		header.setSubscription(subscription);
+		header.addHeader("correlation-id", correlationId);
+		header.addHeader("datatable-iri", datatableIRI);
 		stompMsg.setBody(rdfData);
 		String stompMsgStr = stompMsg.toStompMessage(true);
 		return stompMsgStr;
 	}
 	
-//	private static String createResponseMessage(ResponseMessage msg) {
-//		Gson gson = new Gson();
-//		String strMsg = gson.toJson(msg, ResponseMessage.class);
-//		return strMsg;
-//	}
-	
-	private static String createErrorResponseMessage(String correlationId, String errorMsg, Exception ex) {
-		ResponseMessage msg = new ResponseMessage(correlationId, errorMsg + ex.getMessage());
+	private static String createErrorResponseMessage(String datatableIRI, String correlationId, String errorMsg, Exception ex) {
+		ResponseMessage msg = new ResponseMessage(datatableIRI, correlationId, errorMsg + ex.getMessage());
 		msg.setHasErrors(true);
-//		msg.setData(errorMsg + ex.getMessage());
-//		msg.setCorrelationId(correlationId);
 		Gson gson = new Gson();
 		String strMsg = gson.toJson(msg, ResponseMessage.class);
 		return strMsg;
@@ -175,7 +176,7 @@ public class KafkaConsumer {
 					System.out.println("Error getting message");
 					System.out.flush();
 					logger.error(basicMsg, e);
-					String errorMsg = createErrorResponseMessage("", basicMsg, e);
+					String errorMsg = createErrorResponseMessage("", "", basicMsg, e);
 					// ToDo: send STOMP error message via reply channel 
 //					socket.send(errorMsg);
 					e.printStackTrace();
@@ -185,10 +186,13 @@ public class KafkaConsumer {
 				AbstractBodyMessage stompMsg;
 				RequestMessage jobData;
 				String correlationId;
+				String datatableIRI;
 				try {
 					// Parse data
 					stompMsg = stompMsgParser.parseMessage(taskData);
-					correlationId = stompMsg.getHeader().getHeaderValue("correlation-id");
+					// Use message id as Correlation Identifier
+					correlationId = stompMsg.getHeader().getHeaderValue("message-id");
+					datatableIRI = stompMsg.getHeader().getHeaderValue("datatable-iri");
 					jobData = parseRequestMessage(stompMsg.getBody().toString());
 				}
 				catch (Exception e) {
@@ -196,7 +200,7 @@ public class KafkaConsumer {
 					// ToDo: replace below with message to error channel?
 					String basicMsg = "Problem parsing job data from message.";
 					logger.error(basicMsg, e);
-					String errorMsg = createErrorResponseMessage("", basicMsg, e);
+					String errorMsg = createErrorResponseMessage("", "", basicMsg, e);
 					// ToDo: send STOMP error message via reply channel 
 //					socket.send(errorMsg);
 					e.printStackTrace();
@@ -219,8 +223,8 @@ public class KafkaConsumer {
 					ByteArrayOutputStream os = new ByteArrayOutputStream();
 				    model.write(os, "TURTLE");
 				    String rdfStr = new String(os.toByteArray(), "UTF-8");
-				    ResponseMessage response = new ResponseMessage(correlationId, rdfStr);
-				    String responseMsg = createResponseMessage(replyTopic, correlationId, rdfStr);
+				    ResponseMessage response = new ResponseMessage(datatableIRI, correlationId, rdfStr);
+				    String responseMsg = createResponseMessage(datatableIRI, replyTopic, correlationId, rdfStr);
 				    
 				    // Send message to reply channel
 				    // ToDo: cache producers?
@@ -229,7 +233,7 @@ public class KafkaConsumer {
 				catch (Exception e) {
 					String basicMsg = "Problem running DataStructDef metadata job.";
 					logger.error(basicMsg, e);
-					String errorMsg = createErrorResponseMessage(correlationId, basicMsg, e);
+					String errorMsg = createErrorResponseMessage(datatableIRI, correlationId, basicMsg, e);
 					// ToDo: send STOMP error message via reply channel 
 //					socket.send(errorMsg);
 					e.printStackTrace();
@@ -243,37 +247,6 @@ public class KafkaConsumer {
 		if (consumer != null)
 			consumer.shutdown();
 		simpleProducer.close();
-	}
-	public static void main(String[] args) throws IOException {
-		// Get config settings
-		Properties configProps = new Properties();
-		InputStream in = KafkaConsumer.class.getResourceAsStream("/config.properties");
-		configProps.load(in);
-		in.close();
-		
-		String zookeeper = null;
-		String groupId = configProps.getProperty("consumerGroup");
-		String topic = configProps.getProperty("topic");
-		String replyTopic = configProps.getProperty("replyTopic");
-		
-		// Read docker environment variables
-		Map<String, String> env = System.getenv();
-		String zookeeper_addr = env.get("ZOOKEEPER_PORT_2181_TCP_ADDR");
-		String zookeeper_port = env.get("ZOOKEEPER_PORT_2181_TCP_PORT");
-//		logger.info(String.format("Using ZooKeeper addr %s", zookeeper_addr));
-//		logger.info(String.format("Using ZooKeeper port %s", zookeeper_port));
-		System.out.flush();
-		if (zookeeper_addr != null && !zookeeper_addr.isEmpty() &&
-				zookeeper_port != null && !zookeeper_port.isEmpty()) {
-			zookeeper = String.format("%s:%s", zookeeper_addr, zookeeper_port);
-			logger.info(String.format("Using ZooKeeper endpoint %s", zookeeper));
-		}
-		if (zookeeper == null) {
-			throw new NullPointerException("Zookeeper endpoint should be specified through environment.");
-		}
-		
-		KafkaConsumer simpleHLConsumer = new KafkaConsumer(zookeeper, groupId, topic, replyTopic);
-		simpleHLConsumer.runConsumer();
 	}
 }
 
