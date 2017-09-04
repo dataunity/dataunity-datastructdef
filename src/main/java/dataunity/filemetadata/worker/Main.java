@@ -22,9 +22,12 @@ public class Main {
 		String replyTopic = configProps.getProperty("replyTopic");
 		
 		// Read docker environment variables
-		Map<String, String> env = System.getenv();
-		String zookeeper_addr = env.get("ZOOKEEPER_PORT_2181_TCP_ADDR");
-		String zookeeper_port = env.get("ZOOKEEPER_PORT_2181_TCP_PORT");
+//		Map<String, String> env = System.getenv();
+		// Use hostname
+		String zookeeper_addr = "zookeeper";
+		String zookeeper_port = "2181";
+//		String zookeeper_addr = env.get("ZOOKEEPER_PORT_2181_TCP_ADDR");
+//		String zookeeper_port = env.get("ZOOKEEPER_PORT_2181_TCP_PORT");
 //		logger.info(String.format("Using ZooKeeper addr %s", zookeeper_addr));
 //		logger.info(String.format("Using ZooKeeper port %s", zookeeper_port));
 //		System.out.flush();

@@ -16,9 +16,12 @@ public class SimpleProducer {
 	public SimpleProducer() {
 		String kafka_host = null;
 		Properties props = new Properties();
-		Map<String, String> env = System.getenv();
-		String kafka_addr = env.get("KAFKA_PORT_9092_TCP_ADDR");
-		String kafka_port = env.get("KAFKA_PORT_9092_TCP_PORT");
+		// Use hostname
+		String kafka_addr = "kafka";
+		String kafka_port = "9092";
+//		Map<String, String> env = System.getenv();
+//		String kafka_addr = env.get("KAFKA_PORT_9092_TCP_ADDR");
+//		String kafka_port = env.get("KAFKA_PORT_9092_TCP_PORT");
 		logger.info(String.format("Using Kafka addr %s", kafka_addr));
 		logger.info(String.format("Using Kafka port %s", kafka_port));
 		System.out.flush();
